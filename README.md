@@ -2,6 +2,8 @@
 
 > **Fundraise Transparently. Donate Privately.**
 
+[**Live Demo**](https://hushfund.vercel.app/)
+
 HushFund is a privacy-preserving crowdfunding platform built for the **Zama Developer Program Hackathon**. It demonstrates a real-world use case of Fully Homomorphic Encryption (FHE) using the [Zama fhEVM](https://docs.zama.ai/fhevm) to allow private, encrypted donations on-chain.
 
 ---
