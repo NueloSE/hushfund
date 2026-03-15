@@ -9,7 +9,7 @@ export function MilestoneConfetti({ active }: { active: boolean }) {
     if (!active || fired.current) return;
     fired.current = true;
     import('canvas-confetti').then(({ default: confetti }) => {
-      const colors = ['#7C3AED', '#10B981', '#c4b5fd', '#6ee7b7', '#FAFAFA'];
+      const colors = ['#C9A84C', '#4ADE80', '#E8E4DD', '#B8953A', '#3ad06e'];
       confetti({ particleCount: 100, spread: 76, origin: { x: 0.5, y: 0.6 }, colors });
       setTimeout(() => {
         confetti({ particleCount: 50, angle: 60,  spread: 50, origin: { x: 0 }, colors });

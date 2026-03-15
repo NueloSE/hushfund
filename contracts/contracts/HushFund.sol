@@ -2,22 +2,28 @@
 pragma solidity ^0.8.24;
 
 import {FHE, euint64, externalEuint64} from "@fhevm/solidity/lib/FHE.sol";
+import {ZamaEthereumConfig} from "@fhevm/solidity/config/ZamaConfig.sol";
 
 /**
  * @title HushFund
+ * @author HushFund Team — Zama Developer Program Hackathon
  * @notice Privacy-preserving crowdfunding platform powered by Zama fhEVM.
- *         Campaign totals are always public. Individual private donation amounts
- *         are encrypted via Fully Homomorphic Encryption — the contract adds to
- *         the FHE accumulator without ever knowing the plaintext amount.
  *
- *         Campaign Modes:
- *           0 = MILESTONE — locked until goal is reached
+ *         CORE PRIVACY MODEL:
+ *         - Campaign totals are always public (aggregate transparency)
+ *         - Individual private donation amounts are encrypted via FHE
+ *         - The contract adds to the FHE accumulator without knowing plaintext
+ *         - Only authorized parties (creator/donor) can decrypt via Zama KMS
+ *
+ *         CAMPAIGN MODES:
+ *           0 = MILESTONE — funds locked until goal is reached; refundable if deadline expires
  *           1 = FLEXIBLE  — creator can withdraw at any time
  */
-contract HushFund {
+contract HushFund is ZamaEthereumConfig {
     // ─────────── Constants ───────────
     uint8 public constant MILESTONE = 0;
     uint8 public constant FLEXIBLE = 1;
+    uint256 public constant MIN_DONATION = 0.001 ether;
 
     // ─────────── Data Types ───────────
     struct Campaign {
@@ -26,11 +32,11 @@ contract HushFund {
         string title;
         string description;
         string imageUrl;
-        uint256 goalAmount; // in wei; 0 for FLEXIBLE
-        uint256 totalRaised; // running ETH total (wei)
+        uint256 goalAmount;        // in wei; 0 for FLEXIBLE
+        uint256 totalRaised;       // running ETH total (wei)
         uint256 donorCount;
-        uint8 mode; // MILESTONE or FLEXIBLE
-        uint256 deadline; // unix timestamp; 0 = no deadline
+        uint8 mode;                // MILESTONE or FLEXIBLE
+        uint256 deadline;          // unix timestamp; 0 = no deadline
         bool milestoneReached;
         bool withdrawn;
         bool active;
@@ -38,14 +44,14 @@ contract HushFund {
 
     struct PublicDonation {
         address donor;
-        uint256 amount; // wei
+        uint256 amount;            // wei
         string message;
         uint256 timestamp;
     }
 
     struct PrivateDonation {
         address donor;
-        string message; // encrypted or plain, stored off-chain display
+        string message;
         uint256 timestamp;
     }
 
@@ -54,7 +60,7 @@ contract HushFund {
 
     mapping(uint256 => Campaign) public campaigns;
 
-    // FHE encrypted accumulator per campaign (privacy showcase)
+    // FHE encrypted accumulator per campaign.
     // The contract adds encrypted donation amounts homomorphically without
     // seeing the plaintext. Only authorized parties (creator/donor) can decrypt.
     mapping(uint256 => euint64) private _encryptedTotal;
@@ -66,6 +72,9 @@ contract HushFund {
     // ETH held per campaign (to support multiple campaigns in one contract)
     mapping(uint256 => uint256) private _campaignBalance;
 
+    // Track individual contributions for refunds (donor => campaignId => amount)
+    mapping(address => mapping(uint256 => uint256)) private _donorContributions;
+
     // ─────────── Events ───────────
     event CampaignCreated(
         uint256 indexed id,
@@ -73,16 +82,23 @@ contract HushFund {
         string title,
         uint8 mode
     );
+    event CampaignUpdated(uint256 indexed id);
+    event CampaignClosed(uint256 indexed id, address indexed creator);
     event DonationReceived(
         uint256 indexed campaignId,
         address indexed donor,
         bool isPrivate,
-        uint256 amount // 0 for private (amount hidden)
+        uint256 amount           // 0 for private (amount hidden)
     );
     event MilestoneReached(uint256 indexed campaignId, uint256 totalRaised);
     event FundsWithdrawn(
         uint256 indexed campaignId,
         address indexed creator,
+        uint256 amount
+    );
+    event RefundClaimed(
+        uint256 indexed campaignId,
+        address indexed donor,
         uint256 amount
     );
 
@@ -94,7 +110,10 @@ contract HushFund {
     error AlreadyWithdrawn();
     error InsufficientDonation();
     error DeadlineExpired();
+    error DeadlineNotExpired();
     error TransferFailed();
+    error RefundNotAvailable();
+    error NothingToRefund();
 
     // ─────────── Modifiers ───────────
     modifier campaignExists(uint256 id) {
@@ -115,7 +134,9 @@ contract HushFund {
         _;
     }
 
-    // ─────────── Campaign Management ───────────
+    // ═══════════════════════════════════════════════════════════════
+    //                     CAMPAIGN MANAGEMENT
+    // ═══════════════════════════════════════════════════════════════
 
     /**
      * @notice Create a new fundraising campaign.
@@ -139,6 +160,9 @@ contract HushFund {
         require(bytes(title).length > 0, "Title required");
         if (mode == MILESTONE) {
             require(goalAmount > 0, "Milestone campaigns need a goal");
+        }
+        if (deadline != 0) {
+            require(deadline > block.timestamp, "Deadline must be in the future");
         }
 
         id = ++campaignCount;
@@ -166,7 +190,48 @@ contract HushFund {
         emit CampaignCreated(id, msg.sender, title, mode);
     }
 
-    // ─────────── Donations ───────────
+    /**
+     * @notice Update campaign description or image while it's still active.
+     *         Only the creator can update.
+     * @param campaignId  Campaign to update
+     * @param description New description (pass "" to keep existing)
+     * @param imageUrl    New image URL (pass "" to keep existing)
+     */
+    function updateCampaign(
+        uint256 campaignId,
+        string calldata description,
+        string calldata imageUrl
+    ) external campaignExists(campaignId) onlyCreator(campaignId) {
+        Campaign storage c = campaigns[campaignId];
+        require(c.active, "Campaign is closed");
+
+        if (bytes(description).length > 0) {
+            c.description = description;
+        }
+        if (bytes(imageUrl).length > 0) {
+            c.imageUrl = imageUrl;
+        }
+
+        emit CampaignUpdated(campaignId);
+    }
+
+    /**
+     * @notice Creator can close their campaign at any time.
+     *         Stops accepting new donations.
+     * @param campaignId Campaign to close
+     */
+    function closeCampaign(
+        uint256 campaignId
+    ) external campaignExists(campaignId) onlyCreator(campaignId) {
+        Campaign storage c = campaigns[campaignId];
+        require(c.active, "Already closed");
+        c.active = false;
+        emit CampaignClosed(campaignId, msg.sender);
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //                          DONATIONS
+    // ═══════════════════════════════════════════════════════════════
 
     /**
      * @notice Donate privately. The donation amount is encrypted client-side
@@ -188,7 +253,7 @@ contract HushFund {
         bytes calldata inputProof,
         string calldata message
     ) external payable campaignExists(campaignId) campaignActive(campaignId) {
-        if (msg.value == 0) revert InsufficientDonation();
+        if (msg.value < MIN_DONATION) revert InsufficientDonation();
 
         Campaign storage c = campaigns[campaignId];
 
@@ -212,6 +277,7 @@ contract HushFund {
         c.totalRaised += msg.value;
         c.donorCount++;
         _campaignBalance[campaignId] += msg.value;
+        _donorContributions[msg.sender][campaignId] += msg.value;
 
         _privateDonations[campaignId].push(
             PrivateDonation({
@@ -244,13 +310,14 @@ contract HushFund {
         uint256 campaignId,
         string calldata message
     ) external payable campaignExists(campaignId) campaignActive(campaignId) {
-        if (msg.value == 0) revert InsufficientDonation();
+        if (msg.value < MIN_DONATION) revert InsufficientDonation();
 
         Campaign storage c = campaigns[campaignId];
 
         c.totalRaised += msg.value;
         c.donorCount++;
         _campaignBalance[campaignId] += msg.value;
+        _donorContributions[msg.sender][campaignId] += msg.value;
 
         _publicDonations[campaignId].push(
             PublicDonation({
@@ -274,7 +341,9 @@ contract HushFund {
         emit DonationReceived(campaignId, msg.sender, false, msg.value);
     }
 
-    // ─────────── Withdrawal ───────────
+    // ═══════════════════════════════════════════════════════════════
+    //                    WITHDRAWAL & REFUNDS
+    // ═══════════════════════════════════════════════════════════════
 
     /**
      * @notice Withdraw raised funds to the campaign creator.
@@ -307,7 +376,51 @@ contract HushFund {
         emit FundsWithdrawn(campaignId, msg.sender, amount);
     }
 
-    // ─────────── Views ───────────
+    /**
+     * @notice Claim a refund for a MILESTONE campaign that failed to reach
+     *         its goal before the deadline expired. Only available when:
+     *         - Campaign mode is MILESTONE
+     *         - Campaign has a deadline that has passed
+     *         - Goal was NOT reached
+     *         - Funds have NOT been withdrawn
+     *         - Caller has contributed to the campaign
+     *
+     * @param campaignId Campaign to claim refund from
+     */
+    function claimRefund(
+        uint256 campaignId
+    ) external campaignExists(campaignId) {
+        Campaign storage c = campaigns[campaignId];
+
+        // Refunds only for milestone campaigns that missed their deadline
+        if (c.mode != MILESTONE) revert RefundNotAvailable();
+        if (c.milestoneReached) revert RefundNotAvailable();
+        if (c.withdrawn) revert RefundNotAvailable();
+        if (c.deadline == 0 || block.timestamp <= c.deadline)
+            revert DeadlineNotExpired();
+
+        uint256 contributed = _donorContributions[msg.sender][campaignId];
+        if (contributed == 0) revert NothingToRefund();
+
+        // Mark campaign inactive on first refund claim
+        if (c.active) {
+            c.active = false;
+        }
+
+        // Zero out donor's contribution and update balances
+        _donorContributions[msg.sender][campaignId] = 0;
+        _campaignBalance[campaignId] -= contributed;
+        c.totalRaised -= contributed;
+
+        (bool ok, ) = payable(msg.sender).call{value: contributed}("");
+        if (!ok) revert TransferFailed();
+
+        emit RefundClaimed(campaignId, msg.sender, contributed);
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //                           VIEWS
+    // ═══════════════════════════════════════════════════════════════
 
     function getCampaign(
         uint256 id
@@ -341,6 +454,34 @@ contract HushFund {
         uint256 campaignId
     ) external view campaignExists(campaignId) returns (uint256) {
         return _campaignBalance[campaignId];
+    }
+
+    /**
+     * @notice Get the amount a specific donor has contributed to a campaign.
+     *         Useful for refund eligibility checks on the frontend.
+     */
+    function getDonorContribution(
+        uint256 campaignId,
+        address donor
+    ) external view campaignExists(campaignId) returns (uint256) {
+        return _donorContributions[donor][campaignId];
+    }
+
+    /**
+     * @notice Check if a campaign is eligible for refunds.
+     *         Returns true if: MILESTONE mode, deadline passed, goal not reached, not withdrawn.
+     */
+    function isRefundable(
+        uint256 campaignId
+    ) external view campaignExists(campaignId) returns (bool) {
+        Campaign storage c = campaigns[campaignId];
+        return (
+            c.mode == MILESTONE &&
+            !c.milestoneReached &&
+            !c.withdrawn &&
+            c.deadline != 0 &&
+            block.timestamp > c.deadline
+        );
     }
 
     /**

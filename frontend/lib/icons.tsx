@@ -1,5 +1,5 @@
 // ─── HushFund SVG Icon Library ─────────────────────────────────────────────
-// Clean, minimal SVG icons — no emojis
+// Clean, minimal SVG icons
 
 import React from 'react';
 
@@ -103,8 +103,10 @@ export const CoinsIcon = icon(
 
 export const LogoIcon = ({ size = 24 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 32 32" fill="none" aria-hidden="true">
-    <rect width="32" height="32" rx="8" fill="#7C3AED" fillOpacity="0.12" />
-    <path d="M8 10h16M8 16h16M8 22h10" stroke="#7C3AED" strokeWidth="2.5" strokeLinecap="round" />
-    <circle cx="24" cy="22" r="3" fill="#10B981" />
+    <rect width="32" height="32" rx="6" fill="rgba(201, 168, 76, 0.1)" stroke="rgba(201, 168, 76, 0.2)" strokeWidth="1" />
+    <path d="M9 11h14" stroke="#C9A84C" strokeWidth="2" strokeLinecap="round" />
+    <path d="M9 16h14" stroke="#C9A84C" strokeWidth="2" strokeLinecap="round" opacity="0.6" />
+    <path d="M9 21h8" stroke="#C9A84C" strokeWidth="2" strokeLinecap="round" opacity="0.3" />
+    <circle cx="23" cy="21" r="2.5" fill="#4ADE80" opacity="0.8" />
   </svg>
 );

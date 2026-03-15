@@ -19,8 +19,8 @@ export function DonorWall({ publicDonations, privateDonations }: {
 
   if (entries.length === 0) {
     return (
-      <div style={{ padding: '2rem', textAlign: 'center' }}>
-        <p style={{ fontSize: '0.8125rem', color: 'var(--text-3)' }}>No donations yet. Be the first.</p>
+      <div style={{ padding: '2.5rem', textAlign: 'center' }}>
+        <p style={{ fontSize: '0.8125rem', color: 'var(--text-3)', fontWeight: 300, fontStyle: 'italic', fontFamily: 'var(--serif)' }}>No donations yet. Be the first.</p>
       </div>
     );
   }
@@ -40,24 +40,26 @@ export function DonorWall({ publicDonations, privateDonations }: {
               </div>
               <div style={{ textAlign: 'right', flexShrink: 0 }}>
                 <div className="donor-amount">{formatETH(entry.data.amount)}</div>
-                <div style={{ fontSize: '0.6875rem', color: 'var(--text-3)', marginTop: '0.125rem' }}>{formatDate(entry.data.timestamp)}</div>
+                <div style={{ fontSize: '0.625rem', color: 'var(--text-3)', marginTop: '0.125rem', fontFamily: 'var(--mono)' }}>{formatDate(entry.data.timestamp)}</div>
               </div>
             </>
           ) : (
             <>
               <div className="avatar" style={{ background: 'var(--surface-3)' }}>
-                <LockIcon size={12} color="var(--text-3)" />
+                <LockIcon size={11} color="var(--text-3)" />
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                  <span className="donor-name" style={{ fontSize: '0.8125rem' }}>Anonymous</span>
-                  <span className="fhe-chip"><LockIcon size={8} /> FHE</span>
+                  <span className="donor-name" style={{ fontSize: '0.8125rem', fontStyle: 'italic', fontFamily: 'var(--serif)' }}>Anonymous</span>
+                  <span className="fhe-chip"><LockIcon size={7} /> FHE</span>
                 </div>
                 {entry.data.message && <div className="donor-msg">&ldquo;{entry.data.message}&rdquo;</div>}
               </div>
               <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                <div className="donor-hidden">—</div>
-                <div style={{ fontSize: '0.6875rem', color: 'var(--text-3)', marginTop: '0.125rem' }}>{formatDate(entry.data.timestamp)}</div>
+                <div className="donor-hidden" title="Amount encrypted with FHE">
+                  <span className="redacted" style={{ width: 52, height: 14, display: 'inline-block' }}>&nbsp;</span>
+                </div>
+                <div style={{ fontSize: '0.625rem', color: 'var(--text-3)', marginTop: '0.125rem', fontFamily: 'var(--mono)' }}>{formatDate(entry.data.timestamp)}</div>
               </div>
             </>
           )}

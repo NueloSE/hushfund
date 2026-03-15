@@ -1,4 +1,5 @@
 require("@nomicfoundation/hardhat-toolbox");
+require("dotenv").config();
 
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
@@ -7,7 +8,7 @@ module.exports = {
     settings: {
       optimizer: {
         enabled: true,
-        runs: 200,
+        runs: 800,
       },
       evmVersion: "cancun",
     },
@@ -21,9 +22,15 @@ module.exports = {
       chainId: 31337,
     },
     sepolia: {
-      url: process.env.SEPOLIA_RPC_URL || "https://rpc.sepolia.org",
+      url: process.env.INFURA_API_KEY
+        ? `https://sepolia.infura.io/v3/${process.env.INFURA_API_KEY}`
+        : process.env.SEPOLIA_RPC_URL || "https://rpc.sepolia.org",
       chainId: 11155111,
-      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+      accounts: process.env.DEPLOYER_PRIVATE_KEY
+        ? [process.env.DEPLOYER_PRIVATE_KEY]
+        : process.env.PRIVATE_KEY
+          ? [process.env.PRIVATE_KEY]
+          : [],
     },
   },
   paths: {

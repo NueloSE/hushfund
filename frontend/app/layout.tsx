@@ -26,7 +26,7 @@ export default function RootLayout({
       <body>
         <Providers>
           <Navbar />
-          <main>{children}</main>
+          <main style={{ position: 'relative', zIndex: 1 }}>{children}</main>
           <Footer />
         </Providers>
       </body>

@@ -22,6 +22,26 @@ export const HUSHFUND_ABI = [
     outputs: [{ name: "id", type: "uint256" }],
   },
 
+  // ─── Campaign management ───
+  {
+    name: "updateCampaign",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "campaignId",  type: "uint256" },
+      { name: "description", type: "string"  },
+      { name: "imageUrl",    type: "string"  },
+    ],
+    outputs: [],
+  },
+  {
+    name: "closeCampaign",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "campaignId", type: "uint256" }],
+    outputs: [],
+  },
+
   // ─── Donations ───
   {
     name: "donatePrivate",
@@ -46,9 +66,16 @@ export const HUSHFUND_ABI = [
     outputs: [],
   },
 
-  // ─── Withdrawal ───
+  // ─── Withdrawal & Refunds ───
   {
     name: "withdrawFunds",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "campaignId", type: "uint256" }],
+    outputs: [],
+  },
+  {
+    name: "claimRefund",
     type: "function",
     stateMutability: "nonpayable",
     inputs: [{ name: "campaignId", type: "uint256" }],
@@ -155,6 +182,37 @@ export const HUSHFUND_ABI = [
       },
     ],
   },
+  {
+    name: "getCampaignBalance",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "campaignId", type: "uint256" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    name: "getDonorContribution",
+    type: "function",
+    stateMutability: "view",
+    inputs: [
+      { name: "campaignId", type: "uint256" },
+      { name: "donor",      type: "address" },
+    ],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    name: "isRefundable",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "campaignId", type: "uint256" }],
+    outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    name: "MIN_DONATION",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
 
   // ─── Events ───
   {
@@ -165,6 +223,21 @@ export const HUSHFUND_ABI = [
       { name: "creator", type: "address", indexed: true },
       { name: "title",   type: "string",  indexed: false },
       { name: "mode",    type: "uint8",   indexed: false },
+    ],
+  },
+  {
+    name: "CampaignUpdated",
+    type: "event",
+    inputs: [
+      { name: "id", type: "uint256", indexed: true },
+    ],
+  },
+  {
+    name: "CampaignClosed",
+    type: "event",
+    inputs: [
+      { name: "id",      type: "uint256", indexed: true },
+      { name: "creator", type: "address", indexed: true },
     ],
   },
   {
@@ -191,6 +264,15 @@ export const HUSHFUND_ABI = [
     inputs: [
       { name: "campaignId", type: "uint256", indexed: true },
       { name: "creator",    type: "address", indexed: true },
+      { name: "amount",     type: "uint256", indexed: false },
+    ],
+  },
+  {
+    name: "RefundClaimed",
+    type: "event",
+    inputs: [
+      { name: "campaignId", type: "uint256", indexed: true },
+      { name: "donor",      type: "address", indexed: true },
       { name: "amount",     type: "uint256", indexed: false },
     ],
   },

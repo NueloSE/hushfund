@@ -1,6 +1,7 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
 import { HushFund } from "../typechain-types";
+import { time } from "@nomicfoundation/hardhat-network-helpers";
 
 describe("HushFund", function () {
   let hushFund: HushFund;
@@ -14,6 +15,7 @@ describe("HushFund", function () {
   const ONE_ETH = ethers.parseEther("1");
   const HALF_ETH = ethers.parseEther("0.5");
   const TWO_ETH = ethers.parseEther("2");
+  const MIN_DONATION = ethers.parseEther("0.001");
 
   beforeEach(async () => {
     [owner, user1, user2] = await ethers.getSigners();
@@ -79,10 +81,80 @@ describe("HushFund", function () {
       ).to.be.revertedWith("Title required");
     });
 
+    it("reverts if deadline is in the past", async () => {
+      const pastTime = Math.floor(Date.now() / 1000) - 3600;
+      await expect(
+        hushFund.createCampaign("Test", "Desc", "", ONE_ETH, MILESTONE, pastTime)
+      ).to.be.revertedWith("Deadline must be in the future");
+    });
+
     it("increments campaignCount", async () => {
       await hushFund.createCampaign("A", "B", "", ONE_ETH, MILESTONE, 0);
       await hushFund.createCampaign("C", "D", "", 0, FLEXIBLE, 0);
       expect(await hushFund.campaignCount()).to.equal(2);
+    });
+  });
+
+  // ─── Campaign Update ───
+  describe("updateCampaign", () => {
+    beforeEach(async () => {
+      await hushFund.createCampaign("Original", "Old desc", "", ONE_ETH, MILESTONE, 0);
+    });
+
+    it("allows creator to update description", async () => {
+      await hushFund.updateCampaign(1, "New description", "");
+      const campaign = await hushFund.getCampaign(1);
+      expect(campaign.description).to.equal("New description");
+    });
+
+    it("allows creator to update image URL", async () => {
+      await hushFund.updateCampaign(1, "", "https://new-image.com/img.jpg");
+      const campaign = await hushFund.getCampaign(1);
+      expect(campaign.imageUrl).to.equal("https://new-image.com/img.jpg");
+    });
+
+    it("emits CampaignUpdated event", async () => {
+      await expect(hushFund.updateCampaign(1, "Updated", ""))
+        .to.emit(hushFund, "CampaignUpdated")
+        .withArgs(1);
+    });
+
+    it("reverts if non-creator tries to update", async () => {
+      await expect(
+        hushFund.connect(user1).updateCampaign(1, "Hack", "")
+      ).to.be.revertedWithCustomError(hushFund, "NotCampaignCreator");
+    });
+  });
+
+  // ─── Close Campaign ───
+  describe("closeCampaign", () => {
+    beforeEach(async () => {
+      await hushFund.createCampaign("To Close", "Desc", "", 0, FLEXIBLE, 0);
+    });
+
+    it("allows creator to close campaign", async () => {
+      await hushFund.closeCampaign(1);
+      const campaign = await hushFund.getCampaign(1);
+      expect(campaign.active).to.be.false;
+    });
+
+    it("emits CampaignClosed event", async () => {
+      await expect(hushFund.closeCampaign(1))
+        .to.emit(hushFund, "CampaignClosed")
+        .withArgs(1, owner.address);
+    });
+
+    it("reverts if non-creator tries to close", async () => {
+      await expect(
+        hushFund.connect(user1).closeCampaign(1)
+      ).to.be.revertedWithCustomError(hushFund, "NotCampaignCreator");
+    });
+
+    it("reverts donations after campaign is closed", async () => {
+      await hushFund.closeCampaign(1);
+      await expect(
+        hushFund.connect(user1).donatePublic(1, "Late!", { value: ONE_ETH })
+      ).to.be.revertedWithCustomError(hushFund, "CampaignNotActive");
     });
   });
 
@@ -124,6 +196,18 @@ describe("HushFund", function () {
       expect(donations[0].message).to.equal("Supporting you!");
     });
 
+    it("tracks donor contribution amount", async () => {
+      await hushFund
+        .connect(user1)
+        .donatePublic(campaignId, "First!", { value: HALF_ETH });
+      await hushFund
+        .connect(user1)
+        .donatePublic(campaignId, "Second!", { value: HALF_ETH });
+
+      const contribution = await hushFund.getDonorContribution(campaignId, user1.address);
+      expect(contribution).to.equal(ONE_ETH);
+    });
+
     it("emits DonationReceived event", async () => {
       await expect(
         hushFund
@@ -145,6 +229,12 @@ describe("HushFund", function () {
 
       const campaign = await hushFund.getCampaign(campaignId);
       expect(campaign.milestoneReached).to.be.true;
+    });
+
+    it("reverts if donation is below minimum", async () => {
+      await expect(
+        hushFund.connect(user1).donatePublic(campaignId, "Dust", { value: 100 })
+      ).to.be.revertedWithCustomError(hushFund, "InsufficientDonation");
     });
 
     it("reverts if donation is 0", async () => {
@@ -185,6 +275,16 @@ describe("HushFund", function () {
         ONE_ETH,
         ethers.parseEther("0.001")
       );
+    });
+
+    it("emits FundsWithdrawn event", async () => {
+      await hushFund
+        .connect(user1)
+        .donatePublic(campaignId, "Go!", { value: ONE_ETH });
+
+      await expect(hushFund.withdrawFunds(campaignId))
+        .to.emit(hushFund, "FundsWithdrawn")
+        .withArgs(campaignId, owner.address, ONE_ETH);
     });
 
     it("reverts if MILESTONE not reached", async () => {
@@ -232,6 +332,145 @@ describe("HushFund", function () {
         .connect(user1)
         .donatePublic(flexId, "Anytime!", { value: HALF_ETH });
       await expect(hushFund.withdrawFunds(flexId)).to.not.be.reverted;
+    });
+  });
+
+  // ─── Refunds ───
+  describe("claimRefund", () => {
+    let campaignId: bigint;
+    let deadline: number;
+
+    beforeEach(async () => {
+      const now = await time.latest();
+      deadline = now + 3600; // 1 hour from now
+      await hushFund.createCampaign(
+        "Timed Campaign",
+        "Must reach goal",
+        "",
+        TWO_ETH,
+        MILESTONE,
+        deadline
+      );
+      campaignId = 1n;
+    });
+
+    it("allows refund after deadline expires without reaching goal", async () => {
+      await hushFund
+        .connect(user1)
+        .donatePublic(campaignId, "Hope!", { value: HALF_ETH });
+
+      // Fast forward past deadline
+      await time.increaseTo(deadline + 1);
+
+      const before = await ethers.provider.getBalance(user1.address);
+      const tx = await hushFund.connect(user1).claimRefund(campaignId);
+      const receipt = await tx.wait();
+      const gasUsed = receipt!.gasUsed * receipt!.gasPrice;
+      const after = await ethers.provider.getBalance(user1.address);
+
+      expect(after - before + gasUsed).to.be.closeTo(
+        HALF_ETH,
+        ethers.parseEther("0.001")
+      );
+    });
+
+    it("emits RefundClaimed event", async () => {
+      await hushFund
+        .connect(user1)
+        .donatePublic(campaignId, "Hope!", { value: HALF_ETH });
+
+      await time.increaseTo(deadline + 1);
+
+      await expect(hushFund.connect(user1).claimRefund(campaignId))
+        .to.emit(hushFund, "RefundClaimed")
+        .withArgs(campaignId, user1.address, HALF_ETH);
+    });
+
+    it("allows multiple donors to refund independently", async () => {
+      await hushFund
+        .connect(user1)
+        .donatePublic(campaignId, "From user1", { value: HALF_ETH });
+      await hushFund
+        .connect(user2)
+        .donatePublic(campaignId, "From user2", { value: ONE_ETH });
+
+      await time.increaseTo(deadline + 1);
+
+      await expect(hushFund.connect(user1).claimRefund(campaignId)).to.not.be.reverted;
+      await expect(hushFund.connect(user2).claimRefund(campaignId)).to.not.be.reverted;
+
+      // Campaign balance should be 0 after both refund
+      const balance = await hushFund.getCampaignBalance(campaignId);
+      expect(balance).to.equal(0);
+    });
+
+    it("reverts if deadline has not expired", async () => {
+      await hushFund
+        .connect(user1)
+        .donatePublic(campaignId, "Early", { value: HALF_ETH });
+
+      await expect(
+        hushFund.connect(user1).claimRefund(campaignId)
+      ).to.be.revertedWithCustomError(hushFund, "DeadlineNotExpired");
+    });
+
+    it("reverts for FLEXIBLE campaigns", async () => {
+      await hushFund.createCampaign("Flex", "Desc", "", 0, FLEXIBLE, 0);
+      await hushFund
+        .connect(user1)
+        .donatePublic(2, "Flex!", { value: HALF_ETH });
+
+      await expect(
+        hushFund.connect(user1).claimRefund(2)
+      ).to.be.revertedWithCustomError(hushFund, "RefundNotAvailable");
+    });
+
+    it("reverts if milestone was reached", async () => {
+      await hushFund
+        .connect(user1)
+        .donatePublic(campaignId, "Big!", { value: TWO_ETH });
+
+      await time.increaseTo(deadline + 1);
+
+      await expect(
+        hushFund.connect(user1).claimRefund(campaignId)
+      ).to.be.revertedWithCustomError(hushFund, "RefundNotAvailable");
+    });
+
+    it("reverts if donor has no contributions", async () => {
+      await hushFund
+        .connect(user1)
+        .donatePublic(campaignId, "Only user1", { value: HALF_ETH });
+
+      await time.increaseTo(deadline + 1);
+
+      await expect(
+        hushFund.connect(user2).claimRefund(campaignId)
+      ).to.be.revertedWithCustomError(hushFund, "NothingToRefund");
+    });
+
+    it("reverts on double refund", async () => {
+      await hushFund
+        .connect(user1)
+        .donatePublic(campaignId, "Once!", { value: HALF_ETH });
+
+      await time.increaseTo(deadline + 1);
+      await hushFund.connect(user1).claimRefund(campaignId);
+
+      await expect(
+        hushFund.connect(user1).claimRefund(campaignId)
+      ).to.be.revertedWithCustomError(hushFund, "NothingToRefund");
+    });
+
+    it("isRefundable returns correct value", async () => {
+      expect(await hushFund.isRefundable(campaignId)).to.be.false;
+
+      await hushFund
+        .connect(user1)
+        .donatePublic(campaignId, "Hope!", { value: HALF_ETH });
+
+      await time.increaseTo(deadline + 1);
+      expect(await hushFund.isRefundable(campaignId)).to.be.true;
     });
   });
 
