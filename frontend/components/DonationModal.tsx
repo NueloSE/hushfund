@@ -24,16 +24,16 @@ async function encryptDonation(amount: bigint, contractAddress: string, userAddr
     const instance = await createInstance({
       networkUrl: 'https://rpc.sepolia.org',
       gatewayUrl: 'https://gateway.sepolia.zama.ai',
-    });
+    } as any);
     const input = instance.createEncryptedInput(
       contractAddress as `0x${string}`,
       userAddress as `0x${string}`
     );
     input.add64(amount);
-    const encrypted = input.encrypt();
+    const encrypted = await input.encrypt();
     return {
-      handle: encrypted.handles[0] as `0x${string}`,
-      proof: encrypted.inputProof as `0x${string}`,
+      handle: encrypted.handles[0] as unknown as `0x${string}`,
+      proof: encrypted.inputProof as unknown as `0x${string}`,
     };
   } catch (err) {
     console.warn('FHE encryption failed, using mock handle:', err);

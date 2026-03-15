@@ -36,7 +36,7 @@ export function Navbar() {
           HushFund
         </Link>
 
-        <div className="navbar-sep" />
+        <div className="navbar-sep hidden md:block" />
 
         <div className="navbar-links">
           {links.map(({ href, label }) => (
@@ -50,63 +50,69 @@ export function Navbar() {
           ))}
         </div>
 
-        {/* Network + Balance display */}
-        {isConnected && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginRight: '0.75rem' }}>
-            {/* Chain indicator */}
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.4rem',
-              padding: '0.35rem 0.625rem',
-              background: isCorrectChain ? 'var(--surface-2)' : 'var(--danger-lt)',
-              border: `1px solid ${isCorrectChain ? 'var(--border)' : 'rgba(232,116,97,0.2)'}`,
-              borderRadius: 6,
-              fontSize: '0.6875rem',
-              fontFamily: 'var(--mono)',
-              letterSpacing: '0.02em',
-            }}>
-              <div style={{
-                width: 7,
-                height: 7,
-                borderRadius: '50%',
-                background: isCorrectChain ? 'var(--green)' : 'var(--danger)',
-                boxShadow: isCorrectChain ? '0 0 6px rgba(74,222,128,0.4)' : '0 0 6px rgba(232,116,97,0.4)',
-              }} />
-              <span style={{ color: isCorrectChain ? 'var(--text-2)' : 'var(--danger)' }}>
-                {isCorrectChain ? 'Sepolia' : 'Wrong Network'}
-              </span>
-            </div>
-
-            {/* Balance */}
-            {balData && (
+        {/* Right side controls */}
+        <div className="flex items-center gap-3" style={{ marginLeft: 'auto' }}>
+          {/* Network + Balance display */}
+          {isConnected && (
+            <div className="hidden md:flex items-center gap-2">
+              {/* Chain indicator */}
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: '0.4rem',
                 padding: '0.35rem 0.625rem',
-                background: 'var(--surface-2)',
-                border: '1px solid var(--border)',
+                background: isCorrectChain ? 'var(--surface-2)' : 'var(--danger-lt)',
+                border: `1px solid ${isCorrectChain ? 'var(--border)' : 'rgba(232,116,97,0.2)'}`,
                 borderRadius: 6,
                 fontSize: '0.6875rem',
                 fontFamily: 'var(--mono)',
-                letterSpacing: '0.01em',
+                letterSpacing: '0.02em',
               }}>
-                <span style={{ color: 'var(--accent)', fontWeight: 600 }}>
-                  {formatBal(balData.value, balData.decimals)}
+                <div style={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: '50%',
+                  background: isCorrectChain ? 'var(--green)' : 'var(--danger)',
+                  boxShadow: isCorrectChain ? '0 0 6px rgba(74,222,128,0.4)' : '0 0 6px rgba(232,116,97,0.4)',
+                }} />
+                <span style={{ color: isCorrectChain ? 'var(--text-2)' : 'var(--danger)' }}>
+                  {isCorrectChain ? 'Sepolia' : 'Wrong Network'}
                 </span>
-                <span style={{ color: 'var(--text-3)' }}>{balData.symbol}</span>
               </div>
-            )}
-          </div>
-        )}
 
-        <ConnectButton
-          accountStatus="address"
-          chainStatus="none"
-          showBalance={false}
-          label="Connect Wallet"
-        />
+              {/* Balance */}
+              {balData && (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  padding: '0.35rem 0.625rem',
+                  background: 'var(--surface-2)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 6,
+                  fontSize: '0.6875rem',
+                  fontFamily: 'var(--mono)',
+                  letterSpacing: '0.01em',
+                }}>
+                  <span style={{ color: 'var(--accent)', fontWeight: 600 }}>
+                    {formatBal(balData.value, balData.decimals)}
+                  </span>
+                  <span style={{ color: 'var(--text-3)' }}>{balData.symbol}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          <ConnectButton
+            accountStatus={{
+              smallScreen: 'avatar',
+              largeScreen: 'address',
+            }}
+            chainStatus="none"
+            showBalance={false}
+            label="Connect Wallet"
+          />
+        </div>
       </div>
     </nav>
   );

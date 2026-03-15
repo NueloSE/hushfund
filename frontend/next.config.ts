@@ -5,9 +5,17 @@ const nextConfig = {
       { protocol: 'https', hostname: '**' },
     ],
   },
-  // Enable Turbopack explicitly (Next.js 16 default) with empty config
-  // to silence the webpack/turbopack conflict error
-  turbopack: {},
+  webpack: (config: any) => {
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      fs: false,
+      net: false,
+      tls: false,
+    };
+    config.externals.push('pino-pretty', 'lokijs', 'encoding');
+    return config;
+  },
+  // Removed turbopack config as it hangs the production build
 };
 
 export default nextConfig;

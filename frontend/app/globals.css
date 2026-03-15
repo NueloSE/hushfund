@@ -587,6 +587,9 @@ textarea.input { height: auto; padding: 0.75rem 0.875rem; resize: vertical; min-
 
 /* ─── Responsive ──────────────────────────────────────── */
 @media (max-width: 768px) {
+  .navbar-inner { padding: 0 1.25rem; justify-content: space-between; }
+  .navbar-logo { margin-right: 0; flex: 1; }
+  .navbar-sep { display: none; }
   .navbar-links { display: none; }
   .steps-grid { grid-template-columns: 1fr; gap: 2.5rem; }
   .steps-grid::before { display: none; }
